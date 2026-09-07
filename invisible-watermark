@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+
+"""
+invisible-watermark is the utility to add hidden watermark and extract watermark from image
+
+embed watermark:  ./invisible-watermark -v -a encode -t bytes -m dwtDct -w 'hello' -o ./test_vectors/wm.png ./test_vectors/original.jpg
+
+decode watermark: ./invisible-watermark -v -a decode -t bytes -m dwtDct -l 40 ./test_vectors/wm.png
+"""
+
+import argparse
+import os
+import shutil
+import sys
+import time
+import uuid
+import cv2
+import base64
+import time
+import pprint
+
+from imwatermark import WatermarkEncoder, WatermarkDecoder
+
+pp = pprint.PrettyPrinter(indent=2)
+
+
+class CustomArgParseFormatter(    # 在 class 後面加上括號，代表「繼承」（Inheritance）。
+    argparse.ArgumentDefaultsHelpFormatter,
+    argparse.RawDescriptionHelpFormatter):
+  pass  # Python 的語法規定，定義完類別後，底下一定要寫東西。pass 就是白話文的「沒事，我只是路過」，用來滿足 Python 的語法結構，代表這個新工具這樣就打造完了。
+
+
+def main():
+    description = __doc__.format()
+    parser = argparse.ArgumentParser(description=description,
+                                   formatter_class=CustomArgParseFormatter)
+
+    parser.add_argument('input',    
+                        help='The path of input')    
+    # add_argument：這是官方工具箱規定好的功能名稱，意思是「增加一條指令規則（引數）」。
+    # 括號 ()：代表「立刻啟動這個功能」，而括號裡放的就是這條規則的詳細細節。
+    # 它代表這是一個必填欄位，而且不需要在指令中輸入 -input，使用者直接在指令最後面輸入的檔案路徑（例如：test.png），就會被翻譯官自動歸類給 input。
+    # help= 是官方規定好的設定名稱，意思是「這條規則的輔助說明文字」。
+    parser.add_argument('-a', '--action', required=True, help='encode|decode')
+    # required=True：這是官方規定好的設定欄位，意思是「必填項」。雖然它是選擇性參數，但因為我們設了 True，使用者如果沒在指令中打 -a，翻譯官就會直接彈出錯誤訊息。
+    parser.add_argument('-t', '--type', default='bits', help='bytes|b16|bits|uuid|ipv4')
+    parser.add_argument('-m', '--method', default='dwtDct', help='dwtDct|dwtDctSvd|rivaGan')  # maxDct -> dwtDct
+    parser.add_argument('-w', '--watermark', default='', help='embedded string')
+    parser.add_argument('-l', '--length', default=0, type=int,
+                        help='watermark bits length, required for bytes|b16|bits watermark')
+    # 專門給「解密 (decode)」用的。
+    parser.add_argument('-o', '--output', required=False,
+                        help='The path of output')
+    # encode時要填，decode時不用填
+    parser.add_argument('-v', '--verbose', required=False, default=False,
+                        action='store_true', help='print info')
+    # Verbose 在軟體工程裡的意思就是「話多、囉嗦」。通常程式在執行成功時是「安靜」的，默默把圖存好就好，不要在畫面上印一堆無關緊要的字。
+    args = parser.parse_args()
+    action = args.action
+    inputFile = args.input
+
+    if action == 'encode':
+        if not args.output:
+            sys.stderr.write('output is required. exiting...\n')
+            sys.exit(1)
+        if not args.watermark:
+            sys.stderr.write('watermark is required. exiting...\n')
+            sys.exit(1)
+        # sys：代表 System（系統）工具箱。  stderr：代表 Standard Error（標準錯誤通道）。  write()：寫入/印出。
+
+        encoder = WatermarkEncoder()
+        wmType = args.type
+        if args.method == 'rivaGan':
+            WatermarkEncoder.loadModel()
+        bgr = cv2.imread(args.input)
+        if args.type == 'bytes':
+            wm = args.watermark.encode('utf-8')
+        # args.watermark 呼叫了 Python 自己的 .encode('utf-8') 按鈕。
+        # Python 把人類看的英文字母 'nthueecs' 轉換成電腦底層的位元組格式（在 Python 裡看起來會像 b'nthueecs'）。
+        # 轉換完成之後，這個位元組資料才會被存進 wm 變數裡。
+        # 最後，在後面的程式碼 encoder.set_watermark(wmType, wm) 中，這包已經翻譯好的位元組才會被餵給 WatermarkEncoder。
+        elif args.type == 'b16':
+            wm = args.watermark.upper().encode('utf-8')
+        # upper():轉成大寫
+        elif args.type == 'bits':
+            wm = [int(c) % 2 for c in args.watermark]
+        else:
+            wm = args.watermark
+        encoder.set_watermark(wmType, wm)
+        start = time.time()
+        # time.time()：這是 Python 內建的時間工具，它會抓取系統當下最精準的時間（單位是秒）。
+        bgr_encoded = encoder.encode(bgr, args.method)
+        # bgr：這是你原本用 OpenCV 讀進來的原始圖片（未加密的像素矩陣）。
+        # 這段漫長的數學運算結束後，地下室(encoder)會吐出一張「已經藏好密碼的新圖片矩陣」，程式就會把這個新矩陣存進 bgr_encoded 這個變數裡。
+        if args.verbose:
+            print('watermark length:', encoder.get_length())
+            print('encode time ms:', (time.time()-start) * 1000)
+        cv2.imwrite(args.output, bgr_encoded)
+        # cv2.imwrite：這是 OpenCV 專門用來「寫入/儲存影像」的功能。
+        # args.output：使用者在終端機輸入的 -o 檔名（例如 output.png）。
+        # bgr_encoded：剛剛經歷過所有頻域轉換運算、藏好密碼的那個記憶體矩陣。
+    elif action == 'decode':  
+        if args.type in ['bytes', 'bits', 'b16']:
+            if args.length <= 0:
+                sys.stderr.write('length is required for bytes watermark decoding\n')
+                sys.exit(1)
+            wmType = args.type
+            decoder = WatermarkDecoder(wmType, args.length)
+        else:
+            decoder = WatermarkDecoder(args.type)
+        if args.method == 'rivaGan':
+            WatermarkDecoder.loadModel()
+        bgr = cv2.imread(args.input)
+        start = time.time()
+        wm = decoder.decode(bgr, args.method)
+        # 這是解密流程的心臟。管家帶著你的圖片矩陣，跑到地下室呼叫你指定的演算法（例如 dwtDct）。
+        # 地下室的 maxDct.py 算完之後，會回傳一堆 0 和 1。管家收到這些 0 和 1 後，會自動幫你把它們還原（Reconstruct）成原本的格式，最後把結果存進 wm 裡面。
+        if args.verbose:
+            print('decode time ms:', (time.time()-start) * 1000)
+        if args.type in ['bytes', 'b16']:
+            wm = wm.decode('utf-8')
+        print(wm)
+    else:
+        sys.stderr.write('unknown action\n')
+        sys.exit(1)
+
+if __name__ == '__main__':
+    sys.exit(main())
