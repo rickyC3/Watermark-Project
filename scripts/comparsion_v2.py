@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import cv2
 import pywt
-
+from pathlib import Path
 
 
 
@@ -38,21 +38,10 @@ def compare_channels_diff_batch(img1, img2, channel_names, title):
 
     for i, name in enumerate(channel_names):
 
-        # ---------------------------------
-        # Calculate signed difference
-        # uint8 - uint8 will overflow
-        # so convert to int16 first
-        #
-        # Range theoretically: -255 ~ 255
-        # ---------------------------------
         channel1 = img1[:, :, i].astype(np.int16)
         channel2 = img2[:, :, i].astype(np.int16)
 
         diff = channel1 - channel2
-
-        # =========================
-        # Difference statistics
-        # =========================
 
         mae = np.mean(np.abs(diff))
 
@@ -86,54 +75,6 @@ def compare_channels_diff_batch(img1, img2, channel_names, title):
         local_static.append(static_inf)
 
     return local_static, local_counts
-
-def compare_freq_transform(img1, img2, channel_names):
-
-    if img1.shape != img2.shape:
-        print("ERROR! img1 and img2 shapes are not matched")
-        print(f"img1 shape: {img1.shape}")
-        print(f"img2 shape: {img2.shape}")
-        return
-
-    local_static = []
-    local_diff = []
-    for i, name in enumerate(channel_names):
-        # ---------------------------------
-        # Calculate signed difference
-        # uint8 - uint8 will overflow
-        # so convert to int16 first
-        #
-        # Range theoretically: -255 ~ 255
-        # ---------------------------------
-        channel1 = img1[:, :, i].astype(np.int16)
-        channel2 = img2[:, :, i].astype(np.int16)
-
-        diff = channel1 - channel2
-
-        # =========================
-        # Difference statistics
-        # =========================
-
-        mae = np.mean(np.abs(diff))
-
-        mean_diff = np.mean(diff)
-        std_diff = np.std(diff)
-
-        min_diff = np.min(diff)
-        max_diff = np.max(diff)
-
-        static_inf = (
-            mean_diff,
-            std_diff,
-            mae,
-            min_diff,
-            max_diff
-        )
-
-        local_static.append(static_inf)
-        local_diff.append(diff)
-
-    return local_static, local_diff
 
 def preprocess_image(
     img,
@@ -301,47 +242,10 @@ def run_freq_diff(
     dct_en=False,
     block_size=4,
     save_dir="./freq_result",
-    show_plot=True
+    show_plot=True,
+    do_normalize=False
 ):
-    """
-    Compare frequency-domain coefficient changes
-    between image pairs.
-
-    Statistics:
-        1. Global coefficient statistics
-        2. Spatial coefficient heatmap
-        3. Block-level heatmap
-        4. DCT frequency-position heatmap (if DCT enabled)
-        5. Channel-wise statistics
-
-    Parameters
-    ----------
-    table : str
-        CSV path containing img1 and img2.
-
-    color_domain : str
-        "RGB" or "YUV"
-
-    dwt_domain : str or None
-        None / "LL" / "LH" / "HL" / "HH"
-
-    dct_en : bool
-        Whether to apply 4x4 block DCT.
-
-    block_size : int
-        DCT block size. Default = 4.
-
-    save_dir : str
-        Directory for output figures and CSV.
-
-    show_plot : bool
-        Whether to display matplotlib figures.
-
-    Returns
-    -------
-    results : dict
-        All accumulated statistics.
-    """
+    
 
     # ==========================================================
     # Imports
@@ -360,14 +264,9 @@ def run_freq_diff(
 
     os.makedirs(save_dir, exist_ok=True)
 
-    # ==========================================================
-    # Read CSV
-    # ==========================================================
-
     df = pd.read_csv(table)
 
     if "img1" not in df.columns or "img2" not in df.columns:
-
         print("ERROR! CSV must contain 'img1' and 'img2' columns")
         return None
 
@@ -399,7 +298,7 @@ def run_freq_diff(
         img1_path = row["img1"]
         img2_path = row["img2"]
 
-        print(f"[{idx + 1}/{len(df)}] Processing...")
+        print(f"\r[{idx + 1}/{len(df)}] Processing...", end="", flush=True)
 
         try:
 
@@ -408,7 +307,6 @@ def run_freq_diff(
             # ==================================================
 
             img1 = np.array(Image.open(img1_path).convert("RGB"))
-
             img2 = np.array(Image.open(img2_path).convert("RGB"))
 
             # ==================================================
@@ -434,17 +332,9 @@ def run_freq_diff(
             # ==================================================
 
             if img1_proc.shape != img2_proc.shape:
-
                 print("WARNING: transformed image shapes are different, skip.")
-
-                print(
-                    f"img1: {img1_proc.shape}"
-                )
-
-                print(
-                    f"img2: {img2_proc.shape}"
-                )
-
+                print(f"img1: {img1_proc.shape}")
+                print(f"img2: {img2_proc.shape}")
                 continue
 
             # ==================================================
@@ -470,30 +360,16 @@ def run_freq_diff(
             H, W, C = diff.shape
 
             if spatial_abs_sum is None:
-
-                spatial_abs_sum = np.zeros(
-                    (H, W, C),
-                    dtype=np.float64
-                )
-
-                spatial_sq_sum = np.zeros(
-                    (H, W, C),
-                    dtype=np.float64
-                )
-
-                spatial_signed_sum = np.zeros(
-                    (H, W, C),
-                    dtype=np.float64
-                )
+                spatial_abs_sum = np.zeros((H, W, C),dtype=np.float64)
+                spatial_sq_sum = np.zeros((H, W, C),dtype=np.float64)
+                spatial_signed_sum = np.zeros((H, W, C),dtype=np.float64)
 
             # ==================================================
             # Accumulate spatial coefficient statistics
             # ==================================================
 
             spatial_abs_sum += abs_diff
-
             spatial_sq_sum += diff ** 2
-
             spatial_signed_sum += diff
 
             # ==================================================
@@ -501,54 +377,19 @@ def run_freq_diff(
             # ==================================================
 
             if dct_en:
-
                 block_rows = H // block_size
                 block_cols = W // block_size
-
                 if block_abs_sum is None:
-
-                    block_abs_sum = np.zeros(
-                        (
-                            block_rows,
-                            block_cols,
-                            C
-                        ),
-                        dtype=np.float64
-                    )
-
-                    block_sq_sum = np.zeros(
-                        (
-                            block_rows,
-                            block_cols,
-                            C
-                        ),
-                        dtype=np.float64
-                    )
-
-                    dct_freq_abs_sum = np.zeros(
-                        (
-                            C,
-                            block_size,
-                            block_size
-                        ),
-                        dtype=np.float64
-                    )
-
-                    dct_freq_sq_sum = np.zeros(
-                        (
-                            C,
-                            block_size,
-                            block_size
-                        ),
-                        dtype=np.float64
-                    )
+                    block_abs_sum = np.zeros((block_rows, block_cols, C),dtype=np.float64)
+                    block_sq_sum = np.zeros((block_rows, block_cols, C), dtype=np.float64)
+                    dct_freq_abs_sum = np.zeros((block_size, block_size, C), dtype=np.float64)
+                    dct_freq_sq_sum = np.zeros((block_size, block_size, C), dtype=np.float64)
 
                 # ==================================================
                 # Loop over blocks
                 # ==================================================
 
                 for br in range(block_rows):
-
                     for bc in range(block_cols):
 
                         r1 = br * block_size
@@ -563,55 +404,19 @@ def run_freq_diff(
                             :
                         ]
 
-                        block_abs = np.abs(
-                            block_diff
-                        )
+                        block_abs = np.abs(block_diff)
 
-                        # ------------------------------------------
-                        # Block-level average absolute difference
-                        # ------------------------------------------
-
-                        block_abs_sum[
-                            br,
-                            bc,
-                            :
-                        ] += np.mean(
-                            block_abs,
-                            axis=(0, 1)
-                        )
-
-                        # ------------------------------------------
-                        # Block-level MSE
-                        # ------------------------------------------
-
-                        block_sq_sum[
-                            br,
-                            bc,
-                            :
-                        ] += np.mean(
+                        block_abs_sum[br, bc, :] += np.mean(block_abs, axis=(0, 1)) # axis 2保留維度
+                        block_sq_sum[br, bc, :] += np.mean(
                             block_diff ** 2,
                             axis=(0, 1)
                         )
 
-                        # ------------------------------------------
-                        # DCT frequency position statistics
-                        #
-                        # For every block:
-                        #
-                        #       (u,v)
-                        #
-                        # accumulate its coefficient difference.
-                        # ------------------------------------------
 
                         for ch in range(C):
 
-                            dct_freq_abs_sum[
-                                ch
-                            ] += block_abs[:, :, ch]
-
-                            dct_freq_sq_sum[
-                                ch
-                            ] += block_diff[:, :, ch] ** 2
+                            dct_freq_abs_sum[:, :, ch] += block_abs[:, :, ch]
+                            dct_freq_sq_sum[:, :, ch] += block_diff[:, :, ch] ** 2
 
             # ==================================================
             # Global statistics for this image pair
@@ -620,26 +425,16 @@ def run_freq_diff(
             for ch, name in enumerate(channel_names):
 
                 ch_diff = diff[:, :, ch]
-
                 mean_diff = np.mean(ch_diff)
-
                 std_diff = np.std(ch_diff)
 
-                mae = np.mean(
-                    np.abs(ch_diff)
-                )
-
-                rmse = np.sqrt(
-                    np.mean(ch_diff ** 2)
-                )
+                mae = np.mean(np.abs(ch_diff))
+                rmse = np.sqrt(np.mean(ch_diff ** 2))
 
                 min_diff = np.min(ch_diff)
-
                 max_diff = np.max(ch_diff)
 
-                max_abs_diff = np.max(
-                    np.abs(ch_diff)
-                )
+                max_abs_diff = np.max(np.abs(ch_diff))
 
                 global_static.append({
                     "pair": idx,
@@ -661,30 +456,17 @@ def run_freq_diff(
 
         except Exception as e:
 
-            print(
-                f"ERROR processing pair {idx + 1}"
-            )
-
-            print(
-                f"img1: {img1_path}"
-            )
-
-            print(
-                f"img2: {img2_path}"
-            )
-
-            print(
-                f"Error: {e}"
-            )
+            print(f"ERROR processing pair {idx + 1}")
+            print(f"img1: {img1_path}")
+            print(f"img2: {img2_path}")
+            print(f"Error: {e}")
 
     # ==========================================================
     # No valid pairs
     # ==========================================================
 
     if num_pairs == 0:
-
         print("ERROR: No valid image pairs processed.")
-
         return None
 
     print()
@@ -701,17 +483,17 @@ def run_freq_diff(
     # Average spatial statistics
     # ==========================================================
 
-    spatial_mean_abs = (
-        spatial_abs_sum / num_pairs
-    )
+    spatial_mean_abs = (spatial_abs_sum / num_pairs)
+    spatial_rmse = np.sqrt(spatial_sq_sum / num_pairs)
 
-    spatial_rmse = np.sqrt(
-        spatial_sq_sum / num_pairs
-    )
+    spatial_mean_signed = (spatial_signed_sum / num_pairs)
 
-    spatial_mean_signed = (
-        spatial_signed_sum / num_pairs
-    )
+    if (do_normalize):
+        spatial_mean_abs_visual = np.zeros((H, W, C), dtype=np.float64)
+        for ch in range(C):
+            mean_abs_max = np.max(spatial_mean_abs[:, :, ch])
+            mean_abs_min = np.min(spatial_mean_abs[:, :, ch])
+            spatial_mean_abs_visual[:, :, ch] = (mean_abs_max - spatial_mean_abs[:, :, ch]) / (mean_abs_max - mean_abs_min) 
 
     # ==========================================================
     # Global transformed-domain statistics
@@ -722,53 +504,22 @@ def run_freq_diff(
     for ch, name in enumerate(channel_names):
 
         abs_map = spatial_mean_abs[:, :, ch]
-
         rmse_map = spatial_rmse[:, :, ch]
-
         signed_map = spatial_mean_signed[:, :, ch]
 
         global_results.append({
-
             "channel": name,
-
-            "mean_abs_diff": np.mean(
-                abs_map
-            ),
-
-            "mean_signed_diff": np.mean(
-                signed_map
-            ),
-
-            "spatial_std": np.std(
-                signed_map
-            ),
-
-            "rmse": np.sqrt(
-                np.mean(rmse_map ** 2)
-            ),
-
-            "max_abs_diff": np.max(
-                abs_map
-            ),
-
-            "median_abs_diff": np.median(
-                abs_map
-            ),
-
-            "p95_abs_diff": np.percentile(
-                abs_map,
-                95
-            ),
-
-            "p99_abs_diff": np.percentile(
-                abs_map,
-                99
-            )
+            "mean_abs_diff": np.mean(abs_map),
+            "mean_signed_diff": np.mean(signed_map),
+            "spatial_std": np.std(signed_map),
+            "rmse": np.sqrt(np.mean(rmse_map ** 2)),
+            "max_abs_diff": np.max(abs_map),
+            "median_abs_diff": np.median(abs_map),
+            "p95_abs_diff": np.percentile(abs_map, 95),
+            "p99_abs_diff": np.percentile(abs_map, 99)
         })
 
-    global_df = pd.DataFrame(
-        global_results
-    )
+    global_df = pd.DataFrame(global_results)
 
     # ==========================================================
     # Print global statistics
@@ -777,25 +528,14 @@ def run_freq_diff(
     print()
     print("GLOBAL STATISTICS")
     print("-" * 70)
-    print(
-        global_df.to_string(
-            index=False
-        )
-    )
+    print(global_df.to_string(index=False))
 
     # ==========================================================
     # Save global statistics
     # ==========================================================
 
-    global_csv = os.path.join(
-        save_dir,
-        "global_statistics.csv"
-    )
-
-    global_df.to_csv(
-        global_csv,
-        index=False
-    )
+    global_csv = os.path.join(save_dir, "global_statistics.csv")
+    global_df.to_csv(global_csv, index=False)
 
     # ==========================================================
     # Plot spatial coefficient heatmaps
@@ -804,40 +544,22 @@ def run_freq_diff(
     for ch, name in enumerate(channel_names):
 
         heatmap = spatial_mean_abs[:, :, ch]
+        if (do_normalize):
+            heatmap = spatial_mean_abs_visual[:, :, ch]
 
-        plt.figure(
-            figsize=(10, 8)
-        )
-
-        plt.imshow(
-            heatmap,
-            cmap="hot",
-            interpolation="nearest"
-        )
-
-        plt.colorbar(
-            label="Mean Absolute Coefficient Difference"
-        )
-
-        plt.title(
-            f"Coefficient Change Heatmap - {name}"
-        )
+        plt.figure(figsize=(10, 8))
+        plt.imshow(heatmap, cmap="hot", interpolation="nearest")
+        plt.colorbar(label="Mean Absolute Coefficient Difference")
+        plt.title(f"Coefficient Change Heatmap - {name}")
 
         plt.xlabel("Coefficient X")
         plt.ylabel("Coefficient Y")
 
         plt.tight_layout()
 
-        save_path = os.path.join(
-            save_dir,
-            f"spatial_heatmap_{name}.png"
-        )
+        save_path = os.path.join(save_dir, f"spatial_heatmap_{name}.png")
 
-        plt.savefig(
-            save_path,
-            dpi=200,
-            bbox_inches="tight"
-        )
+        plt.savefig(save_path, dpi=200, bbox_inches="tight")
 
         if show_plot:
             plt.show()
@@ -853,13 +575,15 @@ def run_freq_diff(
 
     if dct_en:
 
-        block_mean_abs = (
-            block_abs_sum / num_pairs
-        )
+        block_mean_abs = (block_abs_sum / num_pairs)
+        block_rmse = np.sqrt(block_sq_sum / num_pairs)
 
-        block_rmse = np.sqrt(
-            block_sq_sum / num_pairs
-        )
+        if (do_normalize):
+            block_mean_abs_visual = np.zeros((block_rows, block_cols, C), dtype=np.float64)
+            for ch in range(C):
+                block_mean_abs_max = np.max(block_mean_abs[:, :, ch])
+                block_mean_abs_min = np.min(block_mean_abs[:, :, ch])
+                block_mean_abs_visual[:, :, ch] = (block_mean_abs_max - block_mean_abs[:, :, ch]) / (block_mean_abs_max - block_mean_abs_min) 
 
         # ------------------------------------------------------
         # Block heatmap
@@ -868,6 +592,9 @@ def run_freq_diff(
         for ch, name in enumerate(channel_names):
 
             heatmap = block_mean_abs[:, :, ch]
+
+            if (do_normalize):
+                heatmap = block_mean_abs_visual[:, :, ch]
 
             plt.figure(figsize=(10, 8))
             plt.imshow(heatmap, cmap="hot", interpolation="nearest")
@@ -893,9 +620,16 @@ def run_freq_diff(
         # ======================================================
 
         dct_mean_abs = (dct_freq_abs_sum / num_pairs / 2500)
-
         dct_rmse = np.sqrt(dct_freq_sq_sum / num_pairs)
 
+
+        if (do_normalize):
+            dct_mean_abs_visual = np.zeros((block_size, block_size, C), dtype=np.float64)
+            for ch in range(C):
+                dct_mean_abs_max = np.max(dct_mean_abs[:, :, ch])
+                dct_mean_abs_min = np.min(dct_mean_abs[:, :, ch])
+                dct_mean_abs_visual[:, :, ch] = (dct_mean_abs_max - dct_mean_abs[:, :, ch]) / (dct_mean_abs_max - dct_mean_abs_min) 
+            
         # ------------------------------------------------------
         # Print DCT frequency statistics
         # ------------------------------------------------------
@@ -911,7 +645,7 @@ def run_freq_diff(
             print(f"Channel: {name}")
             print("Mean absolute difference for each DCT coefficient:")
 
-            print(pd.DataFrame(dct_mean_abs[ch]).round(4).to_string(index=True, header=True))
+            print(pd.DataFrame(dct_mean_abs[:, :, ch]).round(4).to_string(index=True, header=True))
 
         # ======================================================
         # DCT 4x4 frequency heatmap
@@ -919,18 +653,17 @@ def run_freq_diff(
 
         for ch, name in enumerate(channel_names):
 
-            heatmap = dct_mean_abs[ch]
+            heatmap = dct_mean_abs[:, :, ch]
+
+            if (do_normalize):
+                heatmap = dct_mean_abs_visual[:, :, ch]
 
             plt.figure(figsize=(7, 6))
-
             plt.imshow(heatmap, cmap="hot", interpolation="nearest")
-
             plt.colorbar(label="Mean Absolute DCT Difference")
-
             plt.title(f"DCT Frequency Change - {name}")
 
             plt.xlabel("DCT Frequency u")
-
             plt.ylabel("DCT Frequency v")
 
             # --------------------------------------------------
@@ -938,7 +671,6 @@ def run_freq_diff(
             # --------------------------------------------------
 
             for u in range(block_size):
-
                 for v in range(block_size):
 
                     plt.text(
@@ -970,9 +702,7 @@ def run_freq_diff(
         dct_rows = []
 
         for ch, name in enumerate(channel_names):
-
             for u in range(block_size):
-
                 for v in range(block_size):
 
                     dct_rows.append({
@@ -980,15 +710,13 @@ def run_freq_diff(
                         "u": u,
                         "v": v,
                         "mean_abs_diff":
-                            dct_mean_abs[ch, u, v],
+                            dct_mean_abs[u, v, ch],
                         "rmse":
-                            dct_rmse[ch, u, v]
+                            dct_rmse[u, v, ch]
                     })
 
         dct_df = pd.DataFrame(dct_rows)
-
         dct_csv = os.path.join(save_dir, "dct_frequency_statistics.csv")
-
         dct_df.to_csv(dct_csv, index=False)
 
     # ==========================================================
@@ -996,9 +724,7 @@ def run_freq_diff(
     # ==========================================================
 
     pair_df = pd.DataFrame(global_static)
-
     pair_csv = os.path.join(save_dir, "pair_statistics.csv")
-
     pair_df.to_csv(pair_csv, index=False)
 
     # ==========================================================
@@ -1237,19 +963,39 @@ if __name__ == "__main__":
 
     D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\original_ymck_table.csv
     """
-    run_comparsion_diff(
-        r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\original_ps.csv",
-        color_domain="YUV",
-        dwt_domain=None,
-        dct_en = False
-    )
-    # results = run_freq_diff(
-    #     table=r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\original_ps.csv",
+
+    table = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\pc_pspc.csv"
+    table_path = Path(table)
+    color_encode = "YUV"
+    dwt_domain = "HH"
+    other_inf = None
+
+    dwt_domain_list = ["LL", "LH", "HL", "HH"]
+    
+
+
+    # run_comparsion_diff(
+    #     r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\original_ps.csv",
     #     color_domain="YUV",
-    #     dwt_domain="HH",
-    #     dct_en=True,
-    #     block_size=4,
-    #     save_dir=r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\results_original_ps_YUV_HH",
-    #     show_plot=True
+    #     dwt_domain=None,
+    #     dct_en = False
     # )
+
+    for d in dwt_domain_list:
+
+        dwt_domain = d
+        save_path = str(table_path.parent / ("csv_" + table_path.stem) / ("_" + color_encode + "_" + dwt_domain))
+        if (other_inf is not None):
+            save_path += ("_" + other_inf)
+            
+        results = run_freq_diff(
+            table = table,
+            color_domain=color_encode,
+            dwt_domain=dwt_domain,
+            dct_en=True,
+            block_size=4,
+            save_dir=save_path,
+            show_plot=False,
+            do_normalize=True
+        )
     #compare_cmyk(r"D:\Ricky\program\invisible-watermark\invisible-watermark\test_image\im11607_hidden.png", r"D:\Ricky\program\invisible-watermark\invisible-watermark\align_image\bear_camera_fix.jpg")
