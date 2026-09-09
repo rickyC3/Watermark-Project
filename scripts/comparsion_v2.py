@@ -493,7 +493,7 @@ def run_freq_diff(
         for ch in range(C):
             mean_abs_max = np.max(spatial_mean_abs[:, :, ch])
             mean_abs_min = np.min(spatial_mean_abs[:, :, ch])
-            spatial_mean_abs_visual[:, :, ch] = (mean_abs_max - spatial_mean_abs[:, :, ch]) / (mean_abs_max - mean_abs_min) 
+            spatial_mean_abs_visual[:, :, ch] = (spatial_mean_abs[:, :, ch] - mean_abs_min) / (mean_abs_max - mean_abs_min) 
 
     # ==========================================================
     # Global transformed-domain statistics
@@ -583,7 +583,7 @@ def run_freq_diff(
             for ch in range(C):
                 block_mean_abs_max = np.max(block_mean_abs[:, :, ch])
                 block_mean_abs_min = np.min(block_mean_abs[:, :, ch])
-                block_mean_abs_visual[:, :, ch] = (block_mean_abs_max - block_mean_abs[:, :, ch]) / (block_mean_abs_max - block_mean_abs_min) 
+                block_mean_abs_visual[:, :, ch] = (block_mean_abs[:, :, ch] - block_mean_abs_min) / (block_mean_abs_max - block_mean_abs_min) 
 
         # ------------------------------------------------------
         # Block heatmap
@@ -628,7 +628,7 @@ def run_freq_diff(
             for ch in range(C):
                 dct_mean_abs_max = np.max(dct_mean_abs[:, :, ch])
                 dct_mean_abs_min = np.min(dct_mean_abs[:, :, ch])
-                dct_mean_abs_visual[:, :, ch] = (dct_mean_abs_max - dct_mean_abs[:, :, ch]) / (dct_mean_abs_max - dct_mean_abs_min) 
+                dct_mean_abs_visual[:, :, ch] = (dct_mean_abs[:, :, ch] - dct_mean_abs_min) / (dct_mean_abs_max - dct_mean_abs_min) 
             
         # ------------------------------------------------------
         # Print DCT frequency statistics
@@ -964,12 +964,12 @@ if __name__ == "__main__":
     D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\original_ymck_table.csv
     """
 
-    table = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\pc_pspc.csv"
+    table = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\pc_v2_pspc.csv"
     table_path = Path(table)
     color_encode = "YUV"
     dwt_domain = "HH"
     other_inf = None
-
+    is_norm = False
     dwt_domain_list = ["LL", "LH", "HL", "HH"]
     
 
@@ -985,6 +985,8 @@ if __name__ == "__main__":
 
         dwt_domain = d
         save_path = str(table_path.parent / ("csv_" + table_path.stem) / ("_" + color_encode + "_" + dwt_domain))
+        if (is_norm):
+            save_path += ("_norm_")
         if (other_inf is not None):
             save_path += ("_" + other_inf)
             
@@ -996,6 +998,6 @@ if __name__ == "__main__":
             block_size=4,
             save_dir=save_path,
             show_plot=False,
-            do_normalize=True
+            do_normalize=is_norm
         )
     #compare_cmyk(r"D:\Ricky\program\invisible-watermark\invisible-watermark\test_image\im11607_hidden.png", r"D:\Ricky\program\invisible-watermark\invisible-watermark\align_image\bear_camera_fix.jpg")
