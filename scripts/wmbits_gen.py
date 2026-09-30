@@ -10,6 +10,14 @@ use base64 --> 6 bits
 13 * 6 = 78 
 BCH (127, 78)
 total bits: 128 bits
+
+char. cnt
+company: 4
+product: 6
+use base64 --> 6 bits
+10 * 6 = 60, padding to bytes: 64 
+BCH (8, 137) --> need 56 bits (7 bytes)
+total bits: 120 bits
 """
 
 #BCH_POLYNOMIAL = 137

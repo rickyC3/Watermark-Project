@@ -51,11 +51,11 @@ def generate_csv(folder1, folder2, output_csv):
 # ymck D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\YMCK_softproof
 # pc:  D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\5cmx50_pc_aligned_images
 # pspc: D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\5cmx50_pspc_aligned_images
-folder1 = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\encoded_images_50"
+folder1 = r"D:\Ricky\NTHU\Project_DM\print-cam\image\sharpen2\aligned_images_sharpen2_pc"
 
-folder2 = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\5cmx50_pc_aligned_images"
+folder2 = r"D:\Ricky\NTHU\Project_DM\print-cam\image\sharpen2\aligned_images_sharpen2_pspc"
 
-output_csv = r"D:\Ricky\NTHU\Project_DM\print-cam\image\Noise_image\PC200_orginal_pc_noise.csv"
+output_csv = r"D:\Ricky\NTHU\Project_DM\print-cam\image\noise_data_0917\sharpen2_pc_pspc.csv"
 
 
 generate_csv(folder1, folder2, output_csv)

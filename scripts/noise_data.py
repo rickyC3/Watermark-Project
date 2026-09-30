@@ -2,8 +2,8 @@ from pathlib import Path
 import pandas as pd
 from PIL import Image
 
-csv_table_path = r"D:\Ricky\NTHU\Project_DM\print-cam\image\Noise_image\PC200_orginal_pc_noise.csv"
-store_dir = r"D:\Ricky\NTHU\Project_DM\print-cam\image\Noise_image\noise_image"
+csv_table_path = r"D:\Ricky\NTHU\Project_DM\print-cam\image\noise_data_0917\sharpen2_pc_pspc.csv"
+store_dir = r"D:\Ricky\NTHU\Project_DM\print-cam\image\noise_data_0917\noise_image"
 
 save_path = Path(store_dir)
 save_path.mkdir(parents=True, exist_ok=True)
