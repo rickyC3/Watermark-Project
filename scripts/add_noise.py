@@ -7,9 +7,9 @@ import numpy as np
 # Path settings
 # =========================
 
-imgs_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\YMCK_softproof"
+imgs_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\test_img_noise"
 
-output_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\Noise_Break"
+output_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\test_img_noise_add_noise"
 
 input_dir = Path(imgs_fold)
 output_dir = Path(output_fold)
@@ -24,8 +24,8 @@ imgs_list = list(input_dir.glob("*.png"))
 # =========================
 
 # Y channel
-noise_mean_Y = -0.982731
-noise_std_Y = 23.335096
+noise_mean_Y = 1.636073 #-0.982731
+noise_std_Y = 13.817270 #23.335096
 
 
 # =========================

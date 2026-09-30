@@ -37,8 +37,8 @@ def laplacian_sharpen(img, alpha=1.0):
 
     return sharpened.astype(np.uint8)
 
-img_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\encoded_images_50"
-output_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\encoded_images_50\encoded_images_50_sharpen"
+img_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\0909\images_200_0908\images_200_0908"
+output_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\0909\images_200_0908\images_200_0908_sharpen"
 
 img_path = Path(img_fold)
 output_dir = Path(output_fold)
@@ -56,4 +56,5 @@ for idx, f in enumerate(files):
     )
     output_path = output_dir / (f.stem + "_sharpen.png")
     cv2.imwrite(output_path, sharp)
-    print(f"process images: {idx}/{len(files)}")
+    print(f"\rprocess images: {idx}/{len(files)}", end="", flush=1)
+print()

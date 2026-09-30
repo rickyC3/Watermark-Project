@@ -5,7 +5,7 @@ from PIL import Image
 import cv2
 import pywt
 from pathlib import Path
-
+import os
 
 
 def compare_channels_diff_batch(img1, img2, channel_names, title):
@@ -82,42 +82,12 @@ def preprocess_image(
     dwt_domain=None,
     do_dct = False
 ):
-    """
-    Image preprocessing:
-    Parameters
-    ----------
-    img : np.ndarray
-        Input RGB image, shape = (H, W, 3)
-
-    color_domain : str
-        "RGB" or "YUV"
-
-    dwt_domain : str or None
-        None
-        "LL"
-        "LH"
-        "HL"
-        "HH"
-
-    Returns
-    -------
-    output : np.ndarray
-        Preprocessed image / coefficients
-    """
-
-    # ==================================================
-    # 1. Check input
-    # ==================================================
 
     if img.ndim != 3 or img.shape[2] != 3:
         raise ValueError(
             f"Input image must be H x W x 3, "
             f"but got {img.shape}"
         )
-
-    # ==================================================
-    # 2. RGB -> selected color domain
-    # ==================================================
 
     if color_domain == "RGB":
         data = img.copy()
@@ -131,9 +101,7 @@ def preprocess_image(
         channel_names = ["Y", "U", "V"]
 
     else:
-        raise ValueError(
-            "color_domain must be 'RGB' or 'YUV'"
-        )
+        raise ValueError("color_domain must be 'RGB' or 'YUV'")
 
     # ==================================================
     # 3. No DWT
@@ -146,17 +114,13 @@ def preprocess_image(
     # ==================================================
     # 4. DWT preprocessing
     # ==================================================
-
-    if dwt_domain not in ["LL", "LH", "HL", "HH"]:
-        raise ValueError(
-            "dwt_domain must be "
-            "'LL', 'LH', 'HL', 'HH', or None"
-        )
-
-    # --------------------------------------------------
-    # Make image size divisible by 2
-    # Haar DWT requires even dimensions.
-    # --------------------------------------------------
+    # check domain name is correct
+    for d in dwt_domain:
+        if d not in ["LL", "LH", "HL", "HH"]:
+            raise ValueError(
+                "dwt_domain must be "
+                "'LL', 'LH', 'HL', 'HH', or None"
+            )
 
     row, col, channel = data.shape
     # TODO: for 400 * 400, it should be ok
@@ -164,76 +128,56 @@ def preprocess_image(
     col_even = (col // 2) * 2
 
     data = data[ :row_even, :col_even, : ]
+    output_list = []
+    output_domain = []
 
-    # --------------------------------------------------
-    # Store selected DWT coefficients
-    #
-    # Shape will be approximately:
-    # (H/2, W/2, 3)
-    # --------------------------------------------------
+    for dwt_d in dwt_domain:
+        dwt_result = []
+        for c in range(channel):
 
-    dwt_result = []
+            channel_data = data[:, :, c].astype(np.float32)
+            # ----------------------------------------------
+            # 2D Haar DWT
+            #
+            # ca = LL
+            # h  = LH
+            # v  = HL
+            # d  = HH
+            # ----------------------------------------------
+            ca, (h, v, d) = pywt.dwt2(channel_data, "haar")
+            if dwt_d == "LL":
+                selected = ca
+            elif dwt_d == "LH":
+                selected = h
+            elif dwt_d == "HL":
+                selected = v
+            elif dwt_d == "HH":
+                selected = d
 
-    for c in range(channel):
-
-        channel_data = data[:, :, c].astype(np.float32)
-
-        # ----------------------------------------------
-        # 2D Haar DWT
-        #
-        # ca = LL
-        # h  = LH
-        # v  = HL
-        # d  = HH
-        # ----------------------------------------------
-
-        ca, (h, v, d) = pywt.dwt2(channel_data, "haar")
-
-        # ----------------------------------------------
-        # Select DWT domain
-        # ----------------------------------------------
-
-        if dwt_domain == "LL":
-            selected = ca
-
-        elif dwt_domain == "LH":
-            selected = h
-
-        elif dwt_domain == "HL":
-            selected = v
-
-        elif dwt_domain == "HH":
-            selected = d
-
-        if do_dct is not False:
-            dct_row, dct_cal = selected.shape
-            block = 4
-            ROW = dct_row // block
-            COL = dct_cal // block
-        
-            TOTAL_BLOCK = ROW * COL
-            for idx in range(0, TOTAL_BLOCK, 1):
-                r1 = idx // COL
-                c1 = idx % COL
-                block_A = selected[r1*block : r1*block + block,
-                                  c1*block : c1*block + block]
-
-                dct_A = cv2.dct(block_A)
-
-                selected[r1*block : r1*block + block,
-                    c1*block : c1*block + block] = dct_A
+            if do_dct is not False:
+                dct_row, dct_cal = selected.shape
+                block = 4
+                ROW = dct_row // block
+                COL = dct_cal // block
             
+                TOTAL_BLOCK = ROW * COL
+                for idx in range(0, TOTAL_BLOCK, 1):
+                    r1 = idx // COL
+                    c1 = idx % COL
+                    block_A = selected[r1*block : r1*block + block,
+                                    c1*block : c1*block + block]
+
+                    dct_A = cv2.dct(block_A)
+
+                    selected[r1*block : r1*block + block,
+                        c1*block : c1*block + block] = dct_A
                 
-        dwt_result.append(selected)
-
-    # --------------------------------------------------
-    # Stack channels
-    #
-    # (H/2, W/2, 3)
-    # --------------------------------------------------
-
-    output = np.stack(dwt_result, axis=2)
-    return output, channel_names
+            dwt_result.append(selected)
+        output = np.stack(dwt_result, axis=2)
+        output_list.append(output)
+        output_domain.append(dwt_d)
+    # if do DWTDCT --> 3 return value
+    return output_list, output_domain, channel_names
 
 def run_freq_diff(
     table,
@@ -245,22 +189,6 @@ def run_freq_diff(
     show_plot=True,
     do_normalize=False
 ):
-    
-
-    # ==========================================================
-    # Imports
-    # ==========================================================
-
-    import os
-    import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import cv2
-    from PIL import Image
-
-    # ==========================================================
-    # Create output directory
-    # ==========================================================
 
     os.makedirs(save_dir, exist_ok=True)
 
@@ -270,6 +198,7 @@ def run_freq_diff(
         print("ERROR! CSV must contain 'img1' and 'img2' columns")
         return None
 
+    #for dwt_d in dwt_domain:
     global_static = []
 
     spatial_abs_sum = None
@@ -289,11 +218,14 @@ def run_freq_diff(
 
     channel_names = None
 
-    # ==========================================================
-    # Process every image pair
-    # ==========================================================
+    # =========================================================
+    # img diff dict(list)
+    # =========================================================
+    diff_inf = {}
 
     for idx, row in df.iterrows():
+
+        diff_unit = {}
 
         img1_path = row["img1"]
         img2_path = row["img2"]
@@ -301,17 +233,8 @@ def run_freq_diff(
         print(f"\r[{idx + 1}/{len(df)}] Processing...", end="", flush=True)
 
         try:
-
-            # ==================================================
-            # Read images
-            # ==================================================
-
             img1 = np.array(Image.open(img1_path).convert("RGB"))
             img2 = np.array(Image.open(img2_path).convert("RGB"))
-
-            # ==================================================
-            # Preprocess
-            # ==================================================
 
             img1_proc, channel_names = preprocess_image(
                 img1,
@@ -327,35 +250,18 @@ def run_freq_diff(
                 do_dct=dct_en
             )
 
-            # ==================================================
-            # Make sure shapes match
-            # ==================================================
-
             if img1_proc.shape != img2_proc.shape:
                 print("WARNING: transformed image shapes are different, skip.")
                 print(f"img1: {img1_proc.shape}")
                 print(f"img2: {img2_proc.shape}")
                 continue
 
-            # ==================================================
-            # Difference
-            # ==================================================
-
-            # Convert to float
-            #
-            # Important:
-            # DWT/DCT coefficients can be negative
-            #
             img1_f = img1_proc.astype(np.float64)
             img2_f = img2_proc.astype(np.float64)
 
             diff = img1_f - img2_f
 
             abs_diff = np.abs(diff)
-
-            # ==================================================
-            # Initialize accumulators
-            # ==================================================
 
             H, W, C = diff.shape
 
@@ -364,17 +270,10 @@ def run_freq_diff(
                 spatial_sq_sum = np.zeros((H, W, C),dtype=np.float64)
                 spatial_signed_sum = np.zeros((H, W, C),dtype=np.float64)
 
-            # ==================================================
-            # Accumulate spatial coefficient statistics
-            # ==================================================
-
             spatial_abs_sum += abs_diff
             spatial_sq_sum += diff ** 2
             spatial_signed_sum += diff
 
-            # ==================================================
-            # Block statistics
-            # ==================================================
 
             if dct_en:
                 block_rows = H // block_size
@@ -955,39 +854,49 @@ def run_comparsion_diff(
     return (overall_static, global_counts, static_df)
 
 if __name__ == "__main__":
-    table = r"D:\Ricky\NTHU\Project_DM\print-cam\image\0909\csv\Shapren_pc_pspc.csv"
+    r"""
+    D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\original_pc_table.csv
+    D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\original_pspc_table.csv
+    D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\cmyk_pc_table.csv
+    D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\cmyk_pspc_table.csv
+
+    D:\Ricky\NTHU\Project_DM\print-cam\image\5cmx50_aligned_images\original_ymck_table.csv
+    """
+
+    table = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\pc_v2_pspc.csv"
     table_path = Path(table)
     color_encode = "YUV"
-    #dwt_domain = "HH"
+    dwt_domain = "HH"
     other_inf = None
     is_norm = False
     dwt_domain_list = ["LL", "LH", "HL", "HH"]
+    
 
 
-    run_comparsion_diff(
-        r"D:\Ricky\NTHU\Project_DM\print-cam\image\noise_data\Noise_pc_pred.csv",
-        color_domain="YUV",
-        dwt_domain=None,
-        dct_en = False
-    )
+    # run_comparsion_diff(
+    #     r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\original_ps.csv",
+    #     color_domain="YUV",
+    #     dwt_domain=None,
+    #     dct_en = False
+    # )
 
-    # for d in dwt_domain_list:
+    for d in dwt_domain_list:
 
-    #     dwt_domain = d
-    #     save_path = str(table_path.parent / ("csv_" + table_path.stem) / ("_" + color_encode + "_" + dwt_domain))
-    #     if (is_norm):
-    #         save_path += ("_norm_")
-    #     if (other_inf is not None):
-    #         save_path += ("_" + other_inf)
+        dwt_domain = d
+        save_path = str(table_path.parent / ("csv_" + table_path.stem) / ("_" + color_encode + "_" + dwt_domain))
+        if (is_norm):
+            save_path += ("_norm_")
+        if (other_inf is not None):
+            save_path += ("_" + other_inf)
             
-    #     results = run_freq_diff(
-    #         table = table,
-    #         color_domain=color_encode,
-    #         dwt_domain=dwt_domain,
-    #         dct_en=True,
-    #         block_size=4,
-    #         save_dir=save_path,
-    #         show_plot=False,
-    #         do_normalize=is_norm
-    #     )
+        results = run_freq_diff(
+            table = table,
+            color_domain=color_encode,
+            dwt_domain=dwt_domain,
+            dct_en=True,
+            block_size=4,
+            save_dir=save_path,
+            show_plot=False,
+            do_normalize=is_norm
+        )
     #compare_cmyk(r"D:\Ricky\program\invisible-watermark\invisible-watermark\test_image\im11607_hidden.png", r"D:\Ricky\program\invisible-watermark\invisible-watermark\align_image\bear_camera_fix.jpg")

@@ -5,8 +5,8 @@ from pathlib import Path
 # 1. Load image
 # --------------------------------------------------
 #img = Image.open(r"D:\Ricky\program\invisible-watermark\invisible-watermark\test_image\Christina_hidden.png").convert("RGB")
-img_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\encoded_images_208080"
-output_fold = r"D:\Ricky\NTHU\Project_DM\print-cam\image\PCx200\encoded_images_208080_softproof"
+img_fold = r"D:\Ricky\program\invisible-watermark\invisible-watermark\images\test"
+output_fold = r"D:\Ricky\program\invisible-watermark\invisible-watermark\images\test\sofrproof"
 
 input_path = Path(img_fold)
 output_path = Path(output_fold)
